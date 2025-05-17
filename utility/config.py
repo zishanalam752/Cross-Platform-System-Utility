@@ -11,10 +11,21 @@ logging.basicConfig(
 
 class Config:
     def __init__(self):
-        # Directly set the configuration values
-        self.api_key = "system-monitor-secure-key-2024"
-        self.api_url = "http://localhost:5000"
-        self.check_interval = 900
+        # Load environment variables from .env file if it exists
+        load_dotenv()
+        
+        # Get configuration from environment variables with defaults
+        self.api_key = os.getenv('API_KEY', "system-monitor-secure-key-2024")
+        self.api_url = os.getenv('API_URL', "http://localhost:5000")
+        
+        # Check interval in seconds (15-60 minutes)
+        default_interval = 900  # 15 minutes
+        try:
+            interval = int(os.getenv('CHECK_INTERVAL', default_interval))
+            # Ensure interval is between 15 and 60 minutes
+            self.check_interval = max(900, min(3600, interval))
+        except ValueError:
+            self.check_interval = default_interval
         
         # Set environment variables
         os.environ['API_KEY'] = self.api_key
@@ -27,6 +38,7 @@ class Config:
         logging.debug(f"API Key: {'Set' if self.api_key else 'Not set'}")
         if self.api_key:
             logging.debug(f"API Key length: {len(self.api_key)}")
+        logging.debug(f"Check Interval: {self.check_interval} seconds ({self.check_interval/60:.1f} minutes)")
         
         # Debug print statements
         print("DEBUG: self.api_key =", repr(self.api_key))

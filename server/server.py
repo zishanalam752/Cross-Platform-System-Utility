@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, make_response
 from flask_cors import CORS
 import sqlite3
 import json
@@ -230,6 +230,9 @@ def export_csv():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     machine_id = request.args.get('machine_id')
+    os_system = request.args.get('os_system')
+    status_filter = request.args.get('status')  # e.g., 'encrypted', 'up_to_date', etc.
+    check_type = request.args.get('check_type')  # e.g., 'disk_encryption', 'os_updates', etc.
     
     conn = get_db()
     c = conn.cursor()
@@ -263,13 +266,26 @@ def export_csv():
     # Write header
     writer.writerow([
         'Timestamp', 'Machine ID', 'OS System', 'OS Version', 'OS Release',
-        'Disk Encryption Status', 'OS Updates Status', 'Antivirus Status',
-        'Sleep Settings Status', 'CPU Usage %', 'Memory Usage %', 'Disk Usage %'
+        'Disk Encryption Status', 'Disk Encryption Details',
+        'OS Updates Status', 'OS Updates Details',
+        'Antivirus Status', 'Antivirus Name', 'Antivirus Details',
+        'Sleep Settings Status', 'Sleep Time (minutes)', 'Sleep Settings Details',
+        'CPU Usage %', 'Memory Usage %', 'Disk Usage %'
     ])
     
     # Write data
     for row in rows:
         data = json.loads(row['data'])
+        
+        # Apply additional filters
+        if os_system and data['os']['system'].lower() != os_system.lower():
+            continue
+            
+        if status_filter and check_type:
+            check_data = data['checks'].get(check_type, {})
+            if check_data.get('status') != status_filter:
+                continue
+        
         writer.writerow([
             data['timestamp'],
             data['machine_id'],
@@ -277,22 +293,28 @@ def export_csv():
             data['os']['version'],
             data['os']['release'],
             data['checks']['disk_encryption']['status'],
+            data['checks']['disk_encryption'].get('details', ''),
             data['checks']['os_updates']['status'],
+            data['checks']['os_updates'].get('details', ''),
             data['checks']['antivirus']['status'],
+            data['checks']['antivirus'].get('name', ''),
+            data['checks']['antivirus'].get('details', ''),
             data['checks']['sleep_settings']['status'],
+            data['checks']['sleep_settings'].get('sleep_time_minutes', ''),
+            data['checks']['sleep_settings'].get('details', ''),
             data.get('resource_usage', {}).get('cpu_percent', 'N/A'),
             data.get('resource_usage', {}).get('memory_percent', 'N/A'),
             data.get('resource_usage', {}).get('disk_usage_percent', 'N/A')
         ])
     
-    # Prepare response
+    # Prepare the response
     output.seek(0)
-    return send_file(
-        io.BytesIO(output.getvalue().encode('utf-8')),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name=f'system_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-    )
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = 'attachment; filename=system_health_report.csv'
+    
+    conn.close()
+    return response
 
 if __name__ == '__main__':
     init_db()
